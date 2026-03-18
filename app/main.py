@@ -25,6 +25,7 @@ from .auth import (
     reset_password_with_token,
     rotate_db_api_key,
     rotate_user_api_key,
+    revoke_user_api_key,
     set_db_api_key_paid,
     verify_session_token,
     verify_user_api_key,
@@ -316,11 +317,13 @@ def google_site_verification():
 
 @app.get("/health")
 def health_check():
+    is_sqlite_database = settings.database_url.strip().lower().startswith("sqlite")
     return {
         "status": "ok",
         "provider": settings.provider_name,
         "provider_ready": settings.provider_ready,
         "environment": settings.environment,
+        "database_persistent": not is_sqlite_database,
     }
 
 
@@ -482,6 +485,21 @@ def rotate_my_api_key(session: dict = Depends(_require_session)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
 
     return rotated
+
+
+@app.delete("/api/v1/me/api-key")
+def revoke_my_api_key(session: dict = Depends(_require_session)):
+    user_id = session.get("sub")
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session token")
+
+    revoked = revoke_user_api_key(user_id)
+    if revoked is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    if not revoked:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active API key found")
+
+    return {"success": True, "message": "API key revoked."}
 
 
 @app.get("/api/v1/public/plans", response_model=PublicPlansResponse)

@@ -678,8 +678,15 @@
         rotateBtn.textContent = 'Rotate';
         rotateBtn.addEventListener('click', function() { rotateKey(keyId); });
 
+        const revokeBtn = document.createElement('button');
+        revokeBtn.className = 'btn btn-secondary';
+        revokeBtn.style.cssText = 'padding:6px 10px;font-size:12px;border-color:var(--danger);color:var(--danger);';
+        revokeBtn.textContent = 'Revoke';
+        revokeBtn.addEventListener('click', function() { openConfirmRevokeModal(keyId); });
+
         actions.appendChild(copyBtn);
         actions.appendChild(rotateBtn);
+        actions.appendChild(revokeBtn);
         tdActions.appendChild(actions);
 
         tr.appendChild(tdName);
@@ -899,30 +906,31 @@
         return;
       }
 
-      let adminKey;
-      try {
-        adminKey = await requireAdminKey();
-      } catch {
+      const token = getToken();
+      if (!token) {
+        window.location.href = '/ui/login.html';
         return;
       }
 
       try {
         closeConfirmRevokeModal();
         setButtonLoading(confirmRevokeBtn, true, 'Revoking...', 'Revoke');
-        
-        const res = await fetch(`/api/v1/admin/api-keys/${currentKeyIdToRevoke}`, {
+
+        const res = await fetch('/api/v1/me/api-key', {
           method: 'DELETE',
           headers: {
-            'x-admin-key': adminKey
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
           }
         });
 
-        if (!res.ok) {
-          const errorData = await res.text();
-          let error = {};
-          try { error = JSON.parse(errorData); } catch {}
-          throw new Error(error.detail || 'Failed to revoke API key.');
-        }
+        await parseResponse(res);
+
+        currentUser = currentUser || {};
+        currentUser.api_key = null;
+        apiKeyInput.value = '';
+        localStorage.removeItem('brainapi_user_api_key');
+        sessionStorage.removeItem('brainapi_user_api_key');
 
         setStatus('ok', 'API key revoked successfully.');
         showToast('API key revoked', 'ok');

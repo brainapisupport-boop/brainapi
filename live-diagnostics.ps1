@@ -146,6 +146,11 @@ if ($healthJson -and ($healthJson.environment -ne "production")) {
     exit 1
 }
 
+if ($healthJson -and ($healthJson.PSObject.Properties.Name -contains "database_persistent") -and (-not [bool]$healthJson.database_persistent)) {
+    Write-Output "[FAIL] Live service is using a non-persistent database (likely sqlite). Configure managed Postgres for production."
+    exit 1
+}
+
 if ($failed -gt 0) {
     exit 1
 }

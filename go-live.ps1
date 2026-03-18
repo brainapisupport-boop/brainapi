@@ -102,6 +102,7 @@ $groqApiKey = Get-EnvValue -Key "GROQ_API_KEY" -EnvPath $envPath
 $geminiApiKey = Get-EnvValue -Key "GEMINI_API_KEY" -EnvPath $envPath
 $authTokenSecret = Get-EnvValue -Key "AUTH_TOKEN_SECRET" -EnvPath $envPath
 $publicPathsRaw = Get-EnvValue -Key "PUBLIC_PATHS" -EnvPath $envPath
+$databaseUrl = (Get-EnvValue -Key "DATABASE_URL" -EnvPath $envPath)
 $razorpayKeyId = Get-EnvValue -Key "RAZORPAY_KEY_ID" -EnvPath $envPath
 $razorpayKeySecret = Get-EnvValue -Key "RAZORPAY_KEY_SECRET" -EnvPath $envPath
 $razorpayWebhookSecret = Get-EnvValue -Key "RAZORPAY_WEBHOOK_SECRET" -EnvPath $envPath
@@ -112,6 +113,7 @@ Add-Result -Name "ADMIN_API_KEY configured" -Passed ([bool]$adminApiKey) -Detail
 Add-Result -Name "PUBLIC_BASE_URL configured" -Passed ([bool]$publicBaseUrl) -Detail $(if ($publicBaseUrl) { $publicBaseUrl } else { "Missing" })
 Add-Result -Name "ENVIRONMENT is production" -Passed ($environmentMode -eq "production") -Detail $(if ($environmentMode) { $environmentMode } else { "Missing" })
 Add-Result -Name "AUTH_TOKEN_SECRET strength" -Passed ($authTokenSecret.Length -ge 32) -Detail $(if ($authTokenSecret.Length -ge 32) { "Length $($authTokenSecret.Length)" } else { "Too short (min 32 chars)" })
+Add-Result -Name "Production database persistence" -Passed (-not ($databaseUrl.ToLowerInvariant().StartsWith("sqlite"))) -Detail $(if ($databaseUrl) { $databaseUrl } else { "Missing DATABASE_URL" })
 Add-Result -Name "Razorpay credentials" -Passed ([bool]$razorpayKeyId -and [bool]$razorpayKeySecret -and [bool]$razorpayWebhookSecret) -Detail $(if ($razorpayKeyId -and $razorpayKeySecret -and $razorpayWebhookSecret) { "Configured" } else { "Missing one or more values" })
 Add-Result -Name "SMTP essentials" -Passed ([bool]$smtpHost -and [bool]$emailFromAddress) -Detail $(if ($smtpHost -and $emailFromAddress) { "Configured" } else { "Set SMTP_HOST and EMAIL_FROM_ADDRESS" })
 

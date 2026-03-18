@@ -395,6 +395,33 @@ def rotate_user_api_key(user_id: str) -> dict | None:
     return created
 
 
+def revoke_user_api_key(user_id: str) -> bool | None:
+    normalized_user_id = (user_id or "").strip()
+    if not normalized_user_id:
+        return None
+
+    with SessionLocal() as db:
+        user = db.scalar(
+            select(UserAccount)
+            .where(UserAccount.id == normalized_user_id)
+            .where(UserAccount.is_active.is_(True))
+        )
+        if user is None:
+            return None
+
+        if not user.api_key_id:
+            return False
+
+        row = db.get(APIKey, user.api_key_id)
+        if row is not None:
+            row.is_active = False
+
+        user.api_key_id = None
+        db.commit()
+
+    return True
+
+
 def get_db_api_key(key_id: str) -> dict | None:
     with SessionLocal() as db:
         row = db.get(APIKey, key_id)

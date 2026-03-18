@@ -17,7 +17,9 @@ os.environ.setdefault("ALLOW_PRIVATE_WEBHOOK_TARGETS", "false")
 os.environ.setdefault("TRIAL_SIGNUP_ENABLED", "true")
 
 from app.main import app  # noqa: E402
+from app.db import init_db  # noqa: E402
 
+init_db()
 
 client = TestClient(app)
 
@@ -85,6 +87,52 @@ def test_auth_signup_login_reset_flow():
         json={"email": email, "password": "Updated123!"},
     )
     assert relogin_response.status_code == 200
+
+
+def test_user_api_key_revoke_and_regenerate_flow():
+    email = unique_email("user-key")
+
+    signup_response = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "name": "Key User",
+            "email": email,
+            "password": "Start123!",
+            "newsletter_opt_in": False,
+        },
+    )
+    assert signup_response.status_code == 200
+    signup_body = signup_response.json()
+    token = signup_body["token"]
+    original_key = signup_body["api_key"]
+
+    revoke_response = client.delete(
+        "/api/v1/me/api-key",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert revoke_response.status_code == 200
+    assert revoke_response.json()["success"] is True
+
+    revoked_use_response = client.post(
+        "/api/v1/text/generate",
+        headers={"X-API-Key": original_key},
+        json={"prompt": "hello after revoke"},
+    )
+    assert revoked_use_response.status_code == 401
+
+    rotate_response = client.post(
+        "/api/v1/me/api-key/rotate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert rotate_response.status_code == 200
+    new_key = rotate_response.json()["api_key"]
+
+    use_new_key_response = client.post(
+        "/api/v1/text/generate",
+        headers={"X-API-Key": new_key},
+        json={"prompt": "hello with new key"},
+    )
+    assert use_new_key_response.status_code == 200
 
 
 def test_admin_api_key_lifecycle_with_pagination():
