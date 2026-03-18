@@ -58,7 +58,8 @@
     <header class="top-nav">
       <div class="brand"><div class="logo">B</div>BrainAPI</div>
       <nav class="nav-links">
-        <a href="/ui/dashboard.html">Dashboard</a>
+        <a href="/ui/dashboard.html#overview">Dashboard</a>
+        <a href="/ui/dashboard.html#settings">Admin</a>
         <a href="/ui/developer.html">Docs</a>
         <a href="/ui/login.html">Login</a>
       </nav>
@@ -84,7 +85,7 @@
       </div>
       <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
         <button id="demoRunBtn" class="btn btn-primary" disabled>Generate</button>
-        <a href="/ui/dashboard.html" class="btn btn-ghost">Open Dashboard</a>
+        <a href="/ui/dashboard.html#overview" class="btn btn-ghost">Open Dashboard</a>
       </div>
       <div id="demoStatus" class="status warn">Login required to use demo console.</div>
       <pre id="demoOutput">Demo output will appear here after login.</pre>
@@ -236,7 +237,7 @@
       demoPrompt.disabled = false;
       demoRunBtn.disabled = false;
       demoRunBtn.addEventListener('click', async () => {
-        demoOutput.textContent = 'Use /ui/dashboard.html for authenticated playground execution.';
+        demoOutput.textContent = 'Use /ui/dashboard.html#overview for authenticated playground execution.';
       });
     }
   </script>

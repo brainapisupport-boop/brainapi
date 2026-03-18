@@ -24,6 +24,7 @@ from .auth import (
     list_db_api_keys,
     reset_password_with_token,
     rotate_db_api_key,
+    rotate_user_api_key,
     set_db_api_key_paid,
     verify_session_token,
     verify_user_api_key,
@@ -463,6 +464,19 @@ def get_me(session: dict = Depends(_require_session)):
         "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
         "api_key": key_info,
     }
+
+
+@app.post("/api/v1/me/api-key/rotate")
+def rotate_my_api_key(session: dict = Depends(_require_session)):
+    user_id = session.get("sub")
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session token")
+
+    rotated = rotate_user_api_key(user_id)
+    if rotated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+
+    return rotated
 
 
 @app.get("/api/v1/public/plans", response_model=PublicPlansResponse)

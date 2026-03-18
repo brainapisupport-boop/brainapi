@@ -355,6 +355,46 @@ def rotate_db_api_key(key_id: str) -> dict | None:
     }
 
 
+def rotate_user_api_key(user_id: str) -> dict | None:
+    normalized_user_id = (user_id or "").strip()
+    if not normalized_user_id:
+        return None
+
+    with SessionLocal() as db:
+        user = db.scalar(
+            select(UserAccount)
+            .where(UserAccount.id == normalized_user_id)
+            .where(UserAccount.is_active.is_(True))
+        )
+        if user is None:
+            return None
+
+        current_key_id = user.api_key_id
+        user_email = user.email
+
+    if current_key_id:
+        rotated = rotate_db_api_key(current_key_id)
+        if rotated is not None:
+            return rotated
+
+    default_name = f"{user_email.split('@')[0]}-key" if user_email else "user-key"
+    created = create_db_api_key(
+        name=default_name[:120],
+        rate_limit_per_minute=settings.trial_default_rate_limit_per_minute,
+        trial_days=settings.trial_default_days,
+        is_paid=False,
+    )
+
+    with SessionLocal() as db:
+        user = db.get(UserAccount, normalized_user_id)
+        if user is None or not user.is_active:
+            return None
+        user.api_key_id = created["id"]
+        db.commit()
+
+    return created
+
+
 def get_db_api_key(key_id: str) -> dict | None:
     with SessionLocal() as db:
         row = db.get(APIKey, key_id)

@@ -237,6 +237,7 @@ Capability notes in `auto` mode:
 - `POST /api/v1/speech/transcribe` (multipart form-data with `file`)
 - `POST /api/v1/automation/run`
 - `GET /api/v1/me/usage?hours=24`
+- `POST /api/v1/me/api-key/rotate` (requires session token)
 - `POST /api/v1/admin/api-keys` (requires `X-Admin-Key`)
 - `GET /api/v1/admin/api-keys` (requires `X-Admin-Key`)
 - `DELETE /api/v1/admin/api-keys/{key_id}` (requires `X-Admin-Key`)

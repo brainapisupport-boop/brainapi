@@ -430,6 +430,20 @@
       );
     }
 
+    function getStoredUserApiKey() {
+      return (
+        localStorage.getItem('brainapi_user_api_key') ||
+        sessionStorage.getItem('brainapi_user_api_key') ||
+        ''
+      );
+    }
+
+    function storeUserApiKey(rawKey) {
+      if (!rawKey) return;
+      localStorage.setItem('brainapi_user_api_key', rawKey);
+      sessionStorage.setItem('brainapi_user_api_key', rawKey);
+    }
+
     function setStatus(type, message) {
       globalStatus.className = 'status ' + type;
       globalStatus.textContent = message;
@@ -655,15 +669,8 @@
         rotateBtn.textContent = 'Rotate';
         rotateBtn.addEventListener('click', function() { rotateKey(keyId); });
 
-        const revokeBtn = document.createElement('button');
-        revokeBtn.className = 'btn btn-secondary';
-        revokeBtn.style.cssText = 'padding:6px 10px;font-size:12px;border-color:var(--danger);color:var(--danger);';
-        revokeBtn.textContent = 'Revoke';
-        revokeBtn.addEventListener('click', function() { openConfirmRevokeModal(keyId); });
-
         actions.appendChild(copyBtn);
         actions.appendChild(rotateBtn);
-        actions.appendChild(revokeBtn);
         tdActions.appendChild(actions);
 
         tr.appendChild(tdName);
@@ -676,26 +683,22 @@
     }
 
     async function fetchAllKeys() {
-      const adminKey = getAdminKey();
-      if (!adminKey) {
+      if (!currentUser || !currentUser.api_key) {
         allKeys = [];
         renderKeysTable();
         return;
       }
 
-      try {
-        const res = await fetch('/api/v1/admin/api-keys', {
-          method: 'GET',
-          headers: { 'x-admin-key': adminKey }
-        });
-        const data = await parseResponse(res);
-        allKeys = data.items || data.api_keys || [];
-        renderKeysTable();
-      } catch (error) {
-        setStatus('error', 'Could not load API keys. Please check your admin key.');
-        allKeys = [];
-        renderKeysTable();
-      }
+      allKeys = [
+        {
+          id: currentUser.api_key.id,
+          name: currentUser.api_key.name || 'Primary API Key',
+          key_prefix: currentUser.api_key.key_prefix,
+          created_at: currentUser.api_key.created_at,
+          last_used_at: null,
+        }
+      ];
+      renderKeysTable();
     }
 
     function openKeyModal(fullKey) {
@@ -740,6 +743,10 @@
 
         const me = await parseResponse(meRes);
         currentUser = me;
+        const storedApiKey = getStoredUserApiKey();
+        if (storedApiKey) {
+          apiKeyInput.value = storedApiKey;
+        }
 
         const isPaid = me.api_key && me.api_key.is_paid;
         userLine.textContent = `${me.email} • ${isPaid ? 'Pro' : 'Free'} plan`;
@@ -793,44 +800,38 @@
         return;
       }
 
-      try {
-        await requireAdminKey();
-      } catch {
-        return;
-      }
-
       openCreateKeyModal();
     }
 
     async function createApiKeyWithName() {
-      const keyName = keyNameInput.value.trim();
-      if (!keyName) {
-        setStatus('error', 'Please enter a key name.');
-        return;
-      }
-
-      let adminKey;
-      try {
-        adminKey = await requireAdminKey();
-      } catch {
+      const token = getToken();
+      if (!token) {
+        window.location.href = '/ui/login.html';
         return;
       }
 
       try {
         setButtonLoading(confirmCreateKeyBtn, true, 'Creating...', 'Create Key');
-        const res = await fetch('/api/v1/admin/api-keys', {
+        const res = await fetch('/api/v1/me/api-key/rotate', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'x-admin-key': adminKey
-          },
-          body: JSON.stringify({ name: keyName })
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
+          }
         });
         const data = await parseResponse(res);
+        storeUserApiKey(data.api_key || '');
+        apiKeyInput.value = data.api_key || '';
+        if (currentUser && currentUser.api_key) {
+          currentUser.api_key.id = data.id;
+          currentUser.api_key.name = data.name;
+          currentUser.api_key.key_prefix = data.key_prefix;
+          currentUser.api_key.created_at = data.created_at;
+        }
         closeCreateKeyModal();
         openKeyRevealModal(data.api_key || '');
-        setStatus('ok', 'API key created. Save it now.');
-        showToast('API key created', 'ok');
+        setStatus('ok', 'API key regenerated. Save it now.');
+        showToast('API key regenerated', 'ok');
         await fetchAllKeys();
       } catch (error) {
         setStatus('error', error.message || 'Request failed. Please try again.');
@@ -841,22 +842,30 @@
     }
 
     async function rotateKey(keyId) {
-      let adminKey;
-      try {
-        adminKey = await requireAdminKey();
-      } catch {
+      const token = getToken();
+      if (!token) {
+        window.location.href = '/ui/login.html';
         return;
       }
 
       try {
         setStatus('warn', 'Rotating key...');
-        const res = await fetch(`/api/v1/admin/api-keys/${keyId}/rotate`, {
+        const res = await fetch('/api/v1/me/api-key/rotate', {
           method: 'POST',
           headers: {
-            'x-admin-key': adminKey
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json'
           }
         });
         const data = await parseResponse(res);
+        storeUserApiKey(data.api_key || '');
+        apiKeyInput.value = data.api_key || '';
+        if (currentUser && currentUser.api_key) {
+          currentUser.api_key.id = data.id;
+          currentUser.api_key.name = data.name;
+          currentUser.api_key.key_prefix = data.key_prefix;
+          currentUser.api_key.created_at = data.created_at;
+        }
         openKeyRevealModal(data.api_key || '');
         setStatus('ok', 'API key rotated. Save the new key now.');
         await fetchAllKeys();

@@ -487,10 +487,15 @@
             user: response.user,
           });
 
+          if (response.api_key) {
+            localStorage.setItem('brainapi_user_api_key', response.api_key);
+            sessionStorage.setItem('brainapi_user_api_key', response.api_key);
+          }
+
           showAlert('✓ Account created! Redirecting to dashboard...', 'success');
           
           setTimeout(() => {
-            window.location.href = '/ui/dashboard.html';
+            window.location.href = '/ui/dashboard.html#overview';
           }, 1000);
         } else {
           showAlert('Signup failed. Please try again.', 'error');
@@ -539,7 +544,7 @@
     window.addEventListener('load', () => {
       const token = BrainAPIAuth.getToken();
       if (token) {
-        window.location.href = '/ui/dashboard.html';
+        window.location.href = '/ui/dashboard.html#overview';
       }
     });
   </script>

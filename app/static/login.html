@@ -386,7 +386,7 @@
           showAlert('Login successful! Redirecting...', 'success');
           
           setTimeout(() => {
-            window.location.href = '/ui/dashboard.html';
+            window.location.href = '/ui/dashboard.html#overview';
           }, 1000);
         } else {
           showAlert('Login failed. Please check your credentials.', 'error');
@@ -435,7 +435,7 @@
     window.addEventListener('load', () => {
       const token = BrainAPIAuth.getToken();
       if (token) {
-        window.location.href = '/ui/dashboard.html';
+        window.location.href = '/ui/dashboard.html#overview';
       }
     });
   </script>
