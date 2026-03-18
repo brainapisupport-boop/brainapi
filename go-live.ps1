@@ -93,6 +93,15 @@ else {
 
 $adminApiKey = Get-EnvValue -Key "ADMIN_API_KEY" -EnvPath $envPath
 $publicBaseUrl = Get-EnvValue -Key "PUBLIC_BASE_URL" -EnvPath $envPath
+$environmentMode = (Get-EnvValue -Key "ENVIRONMENT" -EnvPath $envPath).ToLowerInvariant()
+$providerName = (Get-EnvValue -Key "PROVIDER" -EnvPath $envPath).ToLowerInvariant()
+$providerFallbackOrder = (Get-EnvValue -Key "PROVIDER_FALLBACK_ORDER" -EnvPath $envPath).ToLowerInvariant()
+$openaiApiKey = Get-EnvValue -Key "OPENAI_API_KEY" -EnvPath $envPath
+$togetherApiKey = Get-EnvValue -Key "TOGETHER_API_KEY" -EnvPath $envPath
+$groqApiKey = Get-EnvValue -Key "GROQ_API_KEY" -EnvPath $envPath
+$geminiApiKey = Get-EnvValue -Key "GEMINI_API_KEY" -EnvPath $envPath
+$authTokenSecret = Get-EnvValue -Key "AUTH_TOKEN_SECRET" -EnvPath $envPath
+$publicPathsRaw = Get-EnvValue -Key "PUBLIC_PATHS" -EnvPath $envPath
 $razorpayKeyId = Get-EnvValue -Key "RAZORPAY_KEY_ID" -EnvPath $envPath
 $razorpayKeySecret = Get-EnvValue -Key "RAZORPAY_KEY_SECRET" -EnvPath $envPath
 $razorpayWebhookSecret = Get-EnvValue -Key "RAZORPAY_WEBHOOK_SECRET" -EnvPath $envPath
@@ -101,8 +110,39 @@ $emailFromAddress = Get-EnvValue -Key "EMAIL_FROM_ADDRESS" -EnvPath $envPath
 
 Add-Result -Name "ADMIN_API_KEY configured" -Passed ([bool]$adminApiKey) -Detail $(if ($adminApiKey) { "Set" } else { "Missing" })
 Add-Result -Name "PUBLIC_BASE_URL configured" -Passed ([bool]$publicBaseUrl) -Detail $(if ($publicBaseUrl) { $publicBaseUrl } else { "Missing" })
+Add-Result -Name "ENVIRONMENT is production" -Passed ($environmentMode -eq "production") -Detail $(if ($environmentMode) { $environmentMode } else { "Missing" })
+Add-Result -Name "AUTH_TOKEN_SECRET strength" -Passed ($authTokenSecret.Length -ge 32) -Detail $(if ($authTokenSecret.Length -ge 32) { "Length $($authTokenSecret.Length)" } else { "Too short (min 32 chars)" })
 Add-Result -Name "Razorpay credentials" -Passed ([bool]$razorpayKeyId -and [bool]$razorpayKeySecret -and [bool]$razorpayWebhookSecret) -Detail $(if ($razorpayKeyId -and $razorpayKeySecret -and $razorpayWebhookSecret) { "Configured" } else { "Missing one or more values" })
 Add-Result -Name "SMTP essentials" -Passed ([bool]$smtpHost -and [bool]$emailFromAddress) -Detail $(if ($smtpHost -and $emailFromAddress) { "Configured" } else { "Set SMTP_HOST and EMAIL_FROM_ADDRESS" })
+
+$providerConfigured = $false
+switch ($providerName) {
+    "openai" { $providerConfigured = [bool]$openaiApiKey }
+    "together" { $providerConfigured = [bool]$togetherApiKey }
+    "groq" { $providerConfigured = [bool]$groqApiKey }
+    "gemini" { $providerConfigured = [bool]$geminiApiKey }
+    "ollama" { $providerConfigured = $true }
+    "mock" { $providerConfigured = $true }
+    "auto" {
+        $providerConfigured = [bool]$openaiApiKey -or [bool]$togetherApiKey -or [bool]$groqApiKey -or [bool]$geminiApiKey
+    }
+    default { $providerConfigured = $false }
+}
+
+Add-Result -Name "Provider credentials configured" -Passed $providerConfigured -Detail $(if ($providerConfigured) { "Provider=$providerName" } else { "Provider=$providerName missing required credentials" })
+
+$requiredPublicPaths = @(
+    "/api/v1/auth/signup",
+    "/api/v1/auth/login",
+    "/api/v1/auth/request-reset",
+    "/api/v1/auth/reset-password"
+)
+$publicPaths = @()
+if ($publicPathsRaw) {
+    $publicPaths = $publicPathsRaw.Split(",") | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+}
+$missingPublicPaths = @($requiredPublicPaths | Where-Object { $_ -notin $publicPaths })
+Add-Result -Name "Auth routes public allowlist" -Passed ($missingPublicPaths.Count -eq 0) -Detail $(if ($missingPublicPaths.Count -eq 0) { "Configured" } else { "Missing: $($missingPublicPaths -join ', ')" })
 
 if ($StartStack) {
     Write-Output "Starting stack..."
@@ -118,6 +158,19 @@ if ($StartStack) {
 $health = Probe-Http -Url "$BaseUrl/health"
 if ($health.Ok -and $health.StatusCode -eq 200) {
     Add-Result -Name "Health endpoint" -Passed $true -Detail "HTTP 200"
+
+    try {
+        $healthBody = Invoke-WebRequest -Uri "$BaseUrl/health" -Method GET -TimeoutSec 15
+        $healthJson = $healthBody.Content | ConvertFrom-Json
+        $healthProviderReady = [bool]$healthJson.provider_ready
+        $healthEnvironment = [string]$healthJson.environment
+
+        Add-Result -Name "Health provider ready" -Passed $healthProviderReady -Detail $(if ($healthProviderReady) { "true" } else { "false" })
+        Add-Result -Name "Health environment production" -Passed ($healthEnvironment -eq "production") -Detail $(if ($healthEnvironment) { $healthEnvironment } else { "missing" })
+    }
+    catch {
+        Add-Result -Name "Health JSON parse" -Passed $false -Detail "Could not parse /health response"
+    }
 }
 else {
     $detail = if ($health.StatusCode) { "HTTP $($health.StatusCode)" } else { $health.Error }
@@ -138,6 +191,17 @@ Add-Result -Name "robots.txt reachable" -Passed ($robots.Ok -and $robots.StatusC
 
 $sitemap = Probe-Http -Url "$BaseUrl/sitemap.xml"
 Add-Result -Name "sitemap.xml reachable" -Passed ($sitemap.Ok -and $sitemap.StatusCode -eq 200) -Detail $(if ($sitemap.StatusCode) { "HTTP $($sitemap.StatusCode)" } else { $sitemap.Error })
+
+$googleVerify = Probe-Http -Url "$BaseUrl/google837a0fffd89d0450.html"
+Add-Result -Name "Google verification file" -Passed ($googleVerify.Ok -and $googleVerify.StatusCode -eq 200) -Detail $(if ($googleVerify.StatusCode) { "HTTP $($googleVerify.StatusCode)" } else { $googleVerify.Error })
+
+$signupPublic = Probe-Http -Url "$BaseUrl/api/v1/auth/signup" -Method "POST"
+$signupPublicBlocked = ($signupPublic.StatusCode -eq 401 -or $signupPublic.StatusCode -eq 403)
+Add-Result -Name "Signup endpoint public access" -Passed (-not $signupPublicBlocked) -Detail $(if ($signupPublic.StatusCode) { "HTTP $($signupPublic.StatusCode)" } else { $signupPublic.Error })
+
+$loginPublic = Probe-Http -Url "$BaseUrl/api/v1/auth/login" -Method "POST"
+$loginPublicBlocked = ($loginPublic.StatusCode -eq 401 -or $loginPublic.StatusCode -eq 403)
+Add-Result -Name "Login endpoint public access" -Passed (-not $loginPublicBlocked) -Detail $(if ($loginPublic.StatusCode) { "HTTP $($loginPublic.StatusCode)" } else { $loginPublic.Error })
 
 if (-not $SkipSmoke) {
     Write-Output "Running smoke tests..."
