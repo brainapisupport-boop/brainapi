@@ -420,6 +420,8 @@
       sessionStorage.removeItem('brainapi.authToken');
       localStorage.removeItem('authToken');
       sessionStorage.removeItem('authToken');
+      localStorage.removeItem('brainapi_user_api_key');
+      sessionStorage.removeItem('brainapi_user_api_key');
     }
 
     function getAdminKey() {
@@ -788,9 +790,15 @@
 
         setStatus('ok', 'Dashboard ready.');
       } catch (error) {
-        if ((error.message || '').toLowerCase().includes('unauthorized') || (error.message || '').toLowerCase().includes('token')) {
+        const message = String(error.message || '').toLowerCase();
+        if (
+          message.includes('unauthorized') ||
+          message.includes('token') ||
+          message.includes('account not found')
+        ) {
           clearToken();
-          window.location.href = '/ui/login.html';
+          const reason = message.includes('account not found') ? 'session-reset' : 'session-expired';
+          window.location.href = `/ui/login.html?reason=${reason}`;
           return;
         }
         setStatus('error', 'Unable to load dashboard. Please refresh and try again.');

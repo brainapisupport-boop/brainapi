@@ -334,6 +334,17 @@
 
   <script src="/ui/auth.js"></script>
   <script>
+    function showSessionNotice() {
+      const params = new URLSearchParams(window.location.search);
+      const reason = params.get('reason');
+
+      if (reason === 'session-reset') {
+        showAlert('Your previous session is no longer valid on this deployment. Please sign in again.', 'error');
+      } else if (reason === 'session-expired') {
+        showAlert('Your session expired. Please sign in again.', 'error');
+      }
+    }
+
     async function handleLogin(event) {
       event.preventDefault();
       
@@ -438,6 +449,8 @@
         window.location.href = '/ui/dashboard.html#overview';
       }
     });
+
+    showSessionNotice();
   </script>
 </body>
 </html>
