@@ -550,9 +550,12 @@
       }
       if (!response.ok) {
         const rawDetail = String(data.detail || data.message || '').trim();
+        const rawDetailLower = rawDetail.toLowerCase();
         const friendly = getFriendlyErrorMessage(rawDetail, response.status);
         const requestId = response.headers.get('x-request-id');
-        const message = rawDetail && rawDetail.length < 220 ? rawDetail : friendly;
+        const message = (rawDetailLower.includes('invalid or inactive api key') || rawDetailLower.includes('invalid api key'))
+          ? 'Invalid or inactive API key. Generate or rotate your key in the API Keys section, then paste it in Test Key for Playground.'
+          : (rawDetail && rawDetail.length < 220 ? rawDetail : friendly);
         throw new Error(requestId ? `${message} (Request ID: ${requestId})` : message);
       }
       return data;
