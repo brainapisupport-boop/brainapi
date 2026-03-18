@@ -309,6 +309,11 @@ from fastapi.responses import FileResponse
 def web_ui():
     return FileResponse("app/static/index.html")
 
+
+@app.get("/google837a0fffd89d0450.html")
+def google_site_verification():
+    return FileResponse("app/static/google837a0fffd89d0450.html", media_type="text/html")
+
 @app.get("/health")
 def health_check():
     return {
