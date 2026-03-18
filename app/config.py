@@ -120,6 +120,16 @@ class Settings(BaseSettings):
         return self.csv_to_list(self.allowed_audio_file_types)
 
     @property
+    def normalized_database_url(self) -> str:
+        url = (self.database_url or "").strip()
+        lower_url = url.lower()
+        if lower_url.startswith("postgres://"):
+            return "postgresql+psycopg://" + url[len("postgres://"):]
+        if lower_url.startswith("postgresql://"):
+            return "postgresql+psycopg://" + url[len("postgresql://"):]
+        return url
+
+    @property
     def provider_name(self) -> str:
         return self.provider.strip().lower()
 
