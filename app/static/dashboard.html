@@ -68,9 +68,12 @@
     .status.error { color: var(--danger); background: rgba(255,107,107,0.08); }
 
     .pricing { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .price-card { background: #0b0b0f; border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+    .price-card { background: #0b0b0f; border: 1px solid var(--border); border-radius: 12px; padding: 14px; transition: border-color 0.15s; }
     .price-card h4 { margin: 0; font-size: 17px; }
     .price-card p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+    .price-card.selectable { cursor: pointer; }
+    .price-card.selectable:hover { border-color: var(--brand); }
+    .price-card.selected { border-color: var(--brand); box-shadow: 0 0 0 2px rgba(0,200,150,0.25); }
 
     .modal { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: none; align-items: center; justify-content: center; z-index: 50; }
     .modal.show { display: flex; }
@@ -206,42 +209,42 @@
         <h3 class="section-title">Billing</h3>
         <p class="subheading">Choose the plan that fits your usage.</p>
         <div id="currentPlanBanner" class="status ok" style="margin-bottom:14px;display:none;"></div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:16px;">
+        <div id="planCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:16px;">
           <div class="price-card">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;">
               <h4 style="margin:0;">Free</h4>
               <span style="font-size:11px;padding:2px 8px;border-radius:20px;background:rgba(255,255,255,0.06);color:var(--muted);">Trial</span>
             </div>
-            <div style="font-size:22px;font-weight:700;margin:10px 0 4px;">$0</div>
+            <div style="font-size:22px;font-weight:700;margin:10px 0 4px;">₹0</div>
             <p style="color:var(--muted);font-size:13px;margin:0;">50k tokens/month<br>Testing & early dev</p>
           </div>
-          <div class="price-card">
+          <div class="price-card selectable" data-plan-name="Starter" data-amount-inr="349">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;">
               <h4 style="margin:0;">Starter</h4>
               <span style="font-size:11px;padding:2px 8px;border-radius:20px;background:rgba(0,200,150,0.1);color:var(--brand);">Popular</span>
             </div>
-            <div style="font-size:22px;font-weight:700;margin:10px 0 4px;">$4<span style="font-size:14px;font-weight:400;color:var(--muted);">/mo</span></div>
+            <div style="font-size:22px;font-weight:700;margin:10px 0 4px;">₹349<span style="font-size:14px;font-weight:400;color:var(--muted);">/mo</span></div>
             <p style="color:var(--muted);font-size:13px;margin:0;">1M tokens<br>Solo developers</p>
           </div>
-          <div class="price-card">
+          <div class="price-card selectable selected" data-plan-name="Pro" data-amount-inr="799">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;">
               <h4 style="margin:0;">Pro</h4>
               <span style="font-size:11px;padding:2px 8px;border-radius:20px;background:rgba(124,108,242,0.15);color:#a89af5;">Best value</span>
             </div>
-            <div style="font-size:22px;font-weight:700;margin:10px 0 4px;">$9<span style="font-size:14px;font-weight:400;color:var(--muted);">/mo</span></div>
+            <div style="font-size:22px;font-weight:700;margin:10px 0 4px;">₹799<span style="font-size:14px;font-weight:400;color:var(--muted);">/mo</span></div>
             <p style="color:var(--muted);font-size:13px;margin:0;">3M tokens<br>Startups & teams</p>
           </div>
-          <div class="price-card">
+          <div class="price-card selectable" data-plan-name="Business" data-amount-inr="1699">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;">
               <h4 style="margin:0;">Business</h4>
               <span style="font-size:11px;padding:2px 8px;border-radius:20px;background:rgba(255,181,106,0.1);color:var(--warning);">Enterprise</span>
             </div>
-            <div style="font-size:22px;font-weight:700;margin:10px 0 4px;">$19<span style="font-size:14px;font-weight:400;color:var(--muted);">/mo</span></div>
+            <div style="font-size:22px;font-weight:700;margin:10px 0 4px;">₹1699<span style="font-size:14px;font-weight:400;color:var(--muted);">/mo</span></div>
             <p style="color:var(--muted);font-size:13px;margin:0;">10M tokens<br>SaaS & production</p>
           </div>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button class="btn btn-primary" id="upgradeBtn">Upgrade Now</button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <button class="btn btn-primary" id="upgradeBtn">Upgrade — ₹799/mo</button>
           <button class="btn btn-secondary" id="billingBtn">Manage Billing</button>
         </div>
       </section>
@@ -361,6 +364,20 @@
     const billingBtn = document.getElementById('billingBtn');
     const upgradeBtn = document.getElementById('upgradeBtn');
     const logoutBtn = document.getElementById('logoutBtn');
+
+    // Plan selection state — default to Pro
+    let selectedPlan = { name: 'Pro', amount_inr: 799 };
+    document.querySelectorAll('.price-card.selectable').forEach(card => {
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.price-card.selectable').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        selectedPlan = {
+          name: card.dataset.planName,
+          amount_inr: parseInt(card.dataset.amountInr, 10)
+        };
+        upgradeBtn.textContent = `Upgrade — ₹${selectedPlan.amount_inr}/mo`;
+      });
+    });
 
     const newKeyBtn = document.getElementById('newKeyBtn');
     const keysTableBody = document.getElementById('keysTableBody');
@@ -1091,7 +1108,7 @@
             'x-api-key': apiKey
           },
           body: JSON.stringify({
-            plan_name: 'BrainAPI Pro',
+            plan_name: selectedPlan.name,
             customer_name: currentUser && currentUser.name ? currentUser.name : null,
             customer_email: currentUser && currentUser.email ? currentUser.email : null,
             customer_phone: null

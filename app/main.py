@@ -770,10 +770,19 @@ def billing_checkout(payload: BillingCheckoutRequest, auth=Depends(require_api_k
     if not auth.requires_billing or not auth.key_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Checkout is available only for managed DB keys")
 
+    # Look up the requested plan in the catalog to get the correct INR amount
+    plan_entry = next(
+        (p for p in PUBLIC_PLAN_CATALOG if p["name"].lower() == payload.plan_name.lower()),
+        None,
+    )
+    if plan_entry is None or plan_entry.get("amount_inr", 0) <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Plan '{payload.plan_name}' is not a purchasable plan.")
+    amount_inr = plan_entry["amount_inr"]
+
     try:
         order = create_razorpay_order(
             api_key_id=auth.key_id,
-            amount_inr=settings.default_plan_amount_inr,
+            amount_inr=amount_inr,
             plan_name=payload.plan_name,
             customer_name=payload.customer_name,
             customer_email=payload.customer_email,
