@@ -13,3 +13,6 @@ rows = cursor.fetchall()
 
 for r in rows:
     print(r)
+    
+
+      
