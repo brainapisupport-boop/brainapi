@@ -393,17 +393,7 @@ def auth_signup(payload: AuthSignupRequest):
         schedule_trial_reminder_emails()
     except Exception as exc:
         logger.warning("Auth signup email queueing failed: %s", exc)
-    try:
-        welcome_evt = queue_welcome_email(
-            name=user["name"],
-            email=user["email"],
-            api_key=signup["api_key"],
-            trial_ends_at=signup["trial_ends_at"],
-        )
-        send_transactional_email(welcome_evt["id"])
-        schedule_trial_reminder_emails()
-    except Exception as exc:
-        logger.warning("Auth signup email failed: %s", exc)
+    
 
     token = create_session_token(user_id=user["id"], email=user["email"])
 
