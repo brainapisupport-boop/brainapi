@@ -393,7 +393,17 @@ def auth_signup(payload: AuthSignupRequest):
         schedule_trial_reminder_emails()
     except Exception as exc:
         logger.warning("Auth signup email queueing failed: %s", exc)
-    
+    try:
+        welcome_evt = queue_welcome_email(
+            name=user["name"],
+            email=user["email"],
+            api_key=signup["api_key"],
+            trial_ends_at=signup["trial_ends_at"],
+        )
+        send_transactional_email(welcome_evt["id"])
+        schedule_trial_reminder_emails()
+    except Exception as exc:
+        logger.warning("Auth signup email failed: %s", exc)
 
     token = create_session_token(user_id=user["id"], email=user["email"])
 
@@ -429,15 +439,12 @@ def auth_request_reset(payload: AuthRequestResetRequest):
     if reset_data is not None:
         try:
             evt = queue_password_reset_email(
-            email=payload.email,
-             reset_token=reset_data["token"],
-          )
-
-            print("EVENT:", evt)  # 👈 ADD THIS
-
+                email=payload.email,
+                reset_token=reset_data["token"],
+            )
             send_transactional_email(evt["id"])
-        
-        logger.warning("Password reset email failed: %s", exc)
+        except Exception as exc:
+            logger.warning("Password reset email failed: %s", exc)
 
     return response
 
