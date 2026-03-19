@@ -267,13 +267,29 @@ def _send_smtp_email(*, recipient_email: str, subject: str, body_text: str) -> N
         message["Reply-To"] = settings.email_reply_to
     message.set_content(body_text)
 
+   try:
+    print("📧 STARTING EMAIL SEND")
+
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
+        print("🔌 Connected to SMTP")
+
         if settings.smtp_use_tls:
             server.starttls()
+            print("🔐 TLS started")
+
         if settings.smtp_username:
+            print("🔑 Logging in...")
             server.login(settings.smtp_username, settings.smtp_password)
+            print("✅ Login successful")
+
+        print("📤 Sending email...")
         server.send_message(message)
 
+        print("✅ EMAIL SENT SUCCESSFULLY")
+
+except Exception as e:
+    print("❌ EMAIL FAILED:", str(e))
+    raise
 
 def send_pending_emails(limit: int = 50) -> dict:
     if limit < 1:
