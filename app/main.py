@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import httpx
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -41,6 +41,8 @@ from .billing import BillingError, create_razorpay_order, handle_razorpay_webhoo
 from .config import settings
 from .db import init_db
 from .emails import (
+    dispatch_transactional_email,
+    email_delivery_health,
     get_lead_contact_for_api_key,
     queue_invoice_email,
     queue_password_reset_email,
@@ -245,6 +247,81 @@ def _as_utc(value: datetime) -> datetime:
     return value.astimezone(timezone.utc)
 
 
+def _schedule_email_delivery(background_tasks: BackgroundTasks | None, event_id: str | None, *, context: str) -> None:
+    clean_event_id = str(event_id or "").strip()
+    if not clean_event_id:
+        return
+
+    if background_tasks is not None:
+        background_tasks.add_task(dispatch_transactional_email, clean_event_id)
+        logger.info("email_delivery_scheduled context=%s event_id=%s", context, clean_event_id)
+        return
+
+    dispatch_transactional_email(clean_event_id)
+
+
+def _queue_and_dispatch_email(
+    background_tasks: BackgroundTasks | None,
+    *,
+    context: str,
+    queue_callable,
+    **queue_kwargs,
+) -> dict:
+    event = queue_callable(**queue_kwargs)
+    event_id = str(event.get("id") or "").strip()
+    if event_id:
+        _schedule_email_delivery(background_tasks, event_id, context=context)
+    elif event.get("error"):
+        logger.warning(
+            "email_queue_not_dispatched context=%s status=%s error=%s",
+            context,
+            event.get("status"),
+            event.get("error"),
+        )
+    return event
+
+
+def _payment_email_payload(*, plan_name: str | None, amount_inr: float | None) -> tuple[str, float]:
+    clean_plan = (plan_name or "").strip() or settings.default_plan_name
+    clean_amount = float(amount_inr or 0)
+    if clean_amount <= 0:
+        clean_amount = float(settings.default_plan_amount_inr)
+    return clean_plan, clean_amount
+
+
+def _schedule_payment_emails(
+    background_tasks: BackgroundTasks | None,
+    *,
+    name: str | None,
+    email: str,
+    plan_name: str | None,
+    amount_inr: float | None,
+    razorpay_payment_id: str,
+    razorpay_order_id: str,
+    context: str,
+) -> None:
+    resolved_plan, resolved_amount = _payment_email_payload(plan_name=plan_name, amount_inr=amount_inr)
+    _queue_and_dispatch_email(
+        background_tasks,
+        context=f"{context}_payment_success",
+        queue_callable=queue_payment_success_email,
+        name=name,
+        email=email,
+        plan_name=resolved_plan,
+    )
+    _queue_and_dispatch_email(
+        background_tasks,
+        context=f"{context}_invoice",
+        queue_callable=queue_invoice_email,
+        name=name,
+        email=email,
+        plan_name=resolved_plan,
+        amount_inr=resolved_amount,
+        razorpay_payment_id=razorpay_payment_id,
+        razorpay_order_id=razorpay_order_id,
+    )
+
+
 def _is_public_path(path: str) -> bool:
     if path == "/":
         return True
@@ -429,6 +506,16 @@ def startup_event():
     if settings.require_api_key and not settings.api_key_list:
         logger.warning("REQUIRE_API_KEY is enabled but API_KEYS is empty; only DB-managed keys can authenticate")
 
+    email_health = email_delivery_health()
+    if email_health["configured"] and not email_health["delivery_enabled"]:
+        logger.warning(
+            "SMTP is configured but email delivery is disabled. ENVIRONMENT=%s SKIP_EMAIL_IN_DEVELOPMENT=%s",
+            settings.environment,
+            settings.skip_email_in_development,
+        )
+    elif settings.environment.lower() == "production" and not email_health["configured"]:
+        logger.warning("Production email delivery is not configured. Set SMTP_HOST and EMAIL_FROM_ADDRESS.")
+
 from fastapi.responses import FileResponse
 
 @app.get("/")
@@ -479,6 +566,7 @@ def public_reviews(limit: int = Query(default=6, ge=1, le=20)):
 
 @app.get("/api/v1/metrics")
 def metrics(request: Request):
+    email_health = email_delivery_health()
     return {
         "status": "ok",
         "request_id": getattr(request.state, "request_id", None),
@@ -486,6 +574,10 @@ def metrics(request: Request):
         "usage_metering_enabled": settings.enable_usage_metering,
         "redis_rate_limiter_enabled": bool(settings.redis_url),
         "support_email": support_email_value(),
+        "email_delivery_enabled": email_health["delivery_enabled"],
+        "email_configured": email_health["configured"],
+        "email_environment": email_health["environment"],
+        "skip_email_in_development": email_health["skip_in_development"],
     }
 
 
@@ -512,7 +604,7 @@ def send_email(payload: SendEmailRequest, auth=Depends(require_api_key)):
 
 
 @app.post("/api/v1/auth/signup", response_model=AuthSignupResponse)
-def auth_signup(payload: AuthSignupRequest):
+def auth_signup(payload: AuthSignupRequest, background_tasks: BackgroundTasks):
     if not settings.trial_signup_enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Signup is currently disabled")
 
@@ -544,15 +636,16 @@ def auth_signup(payload: AuthSignupRequest):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     try:
-        welcome_evt = queue_welcome_email(
+        _queue_and_dispatch_email(
+            background_tasks,
+            context="auth_signup_welcome",
+            queue_callable=queue_welcome_email,
             name=user["name"],
             email=user["email"],
             api_key=signup["api_key"],
             trial_ends_at=signup["trial_ends_at"],
         )
-        if welcome_evt.get("id"):
-            send_transactional_email(welcome_evt["id"])
-        schedule_trial_reminder_emails()
+        background_tasks.add_task(schedule_trial_reminder_emails)
     except Exception as exc:
         logger.warning("Auth signup email failed: %s", exc)
 
@@ -582,7 +675,7 @@ def auth_login(payload: AuthLoginRequest):
 
 
 @app.post("/api/v1/auth/request-reset", response_model=AuthRequestResetResponse)
-def auth_request_reset(payload: AuthRequestResetRequest):
+def auth_request_reset(payload: AuthRequestResetRequest, background_tasks: BackgroundTasks):
     reset_data = create_password_reset_token(payload.email, ttl_minutes=settings.password_reset_token_ttl_minutes)
 
     response = AuthRequestResetResponse(message="If that account exists, a reset link has been prepared.")
@@ -593,12 +686,13 @@ def auth_request_reset(payload: AuthRequestResetRequest):
     if reset_data is not None:
         try:
             recipient_email = str(reset_data["user"]["email"])
-            evt = queue_password_reset_email(
+            _queue_and_dispatch_email(
+                background_tasks,
+                context="password_reset",
+                queue_callable=queue_password_reset_email,
                 email=recipient_email,
                 reset_token=reset_data["token"],
             )
-            if evt.get("id"):
-                send_transactional_email(evt["id"])
         except Exception as exc:
             logger.warning("Password reset email failed: %s", exc)
 
@@ -787,7 +881,7 @@ def public_plans():
 
 
 @app.post("/api/v1/public/signup-trial", response_model=PublicTrialSignupResponse)
-def public_signup_trial(payload: PublicTrialSignupRequest):
+def public_signup_trial(payload: PublicTrialSignupRequest, background_tasks: BackgroundTasks):
     if not settings.trial_signup_enabled:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Trial signup is disabled")
 
@@ -805,14 +899,15 @@ def public_signup_trial(payload: PublicTrialSignupRequest):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     try:
-        welcome_evt = queue_welcome_email(
+        _queue_and_dispatch_email(
+            background_tasks,
+            context="public_signup_welcome",
+            queue_callable=queue_welcome_email,
             name=result["name"],
             email=result["email"],
             api_key=result["api_key"],
             trial_ends_at=result["trial_ends_at"],
         )
-        if welcome_evt.get("id"):
-            send_transactional_email(welcome_evt["id"])
     except Exception as exc:
         logger.warning("Public signup welcome email failed: %s", exc)
 
@@ -950,7 +1045,11 @@ def admin_create_razorpay_order(payload: AdminCreateRazorpayOrderRequest, reques
 
 
 @app.post("/api/v1/admin/billing/razorpay/verify", response_model=RazorpayVerifyPaymentResponse)
-def admin_verify_razorpay_payment(payload: RazorpayVerifyPaymentRequest, request: Request):
+def admin_verify_razorpay_payment(
+    payload: RazorpayVerifyPaymentRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+):
     require_admin(request)
     marked_paid = verify_and_mark_paid(
         api_key_id=payload.api_key_id,
@@ -963,19 +1062,24 @@ def admin_verify_razorpay_payment(payload: RazorpayVerifyPaymentRequest, request
         contact = get_lead_contact_for_api_key(payload.api_key_id)
         if contact:
             try:
-                queue_payment_success_email(
+                _schedule_payment_emails(
+                    background_tasks,
                     name=contact["name"],
                     email=contact["email"],
-                    plan_name=settings.default_plan_name,
+                    plan_name=payload.plan_name,
+                    amount_inr=payload.amount_inr,
+                    razorpay_payment_id=payload.razorpay_payment_id,
+                    razorpay_order_id=payload.razorpay_order_id,
+                    context="admin_verify_payment",
                 )
             except Exception as exc:
-                logger.warning("Payment success email queue failed: %s", exc)
+                logger.warning("Payment email dispatch failed after admin verify: %s", exc)
 
     return RazorpayVerifyPaymentResponse(verified=marked_paid, marked_paid=marked_paid)
 
 
 @app.post("/api/v1/billing/razorpay/webhook")
-async def razorpay_webhook(request: Request):
+async def razorpay_webhook(request: Request, background_tasks: BackgroundTasks):
     signature = request.headers.get("x-razorpay-signature", "")
     raw_body = await request.body()
 
@@ -993,13 +1097,22 @@ async def razorpay_webhook(request: Request):
         contact = get_lead_contact_for_api_key(result["api_key_id"])
         if contact:
             try:
-                queue_payment_success_email(
+                payment_entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+                notes = payment_entity.get("notes", {}) if isinstance(payment_entity, dict) else {}
+                amount_paise = payment_entity.get("amount", 0) if isinstance(payment_entity, dict) else 0
+                webhook_amount_inr = float(amount_paise) / 100 if isinstance(amount_paise, (int, float)) else 0.0
+                _schedule_payment_emails(
+                    background_tasks,
                     name=contact["name"],
                     email=contact["email"],
-                    plan_name=settings.default_plan_name,
+                    plan_name=str(notes.get("plan_name") or settings.default_plan_name),
+                    amount_inr=webhook_amount_inr,
+                    razorpay_payment_id=str(payment_entity.get("id") or ""),
+                    razorpay_order_id=str(payment_entity.get("order_id") or ""),
+                    context="billing_webhook_payment",
                 )
             except Exception as exc:
-                logger.warning("Webhook payment email queue failed: %s", exc)
+                logger.warning("Webhook payment email dispatch failed: %s", exc)
 
     return result
 
@@ -1034,7 +1147,11 @@ def billing_checkout(payload: BillingCheckoutRequest, auth=Depends(require_api_k
 
 
 @app.post("/api/v1/billing/razorpay/verify", response_model=RazorpayVerifyPaymentResponse)
-def billing_verify_razorpay_payment(payload: RazorpayVerifyPaymentRequest, auth=Depends(require_api_key)):
+def billing_verify_razorpay_payment(
+    payload: RazorpayVerifyPaymentRequest,
+    background_tasks: BackgroundTasks,
+    auth=Depends(require_api_key),
+):
     if not auth.key_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Managed DB API key required for verification")
 
@@ -1052,29 +1169,18 @@ def billing_verify_razorpay_payment(payload: RazorpayVerifyPaymentRequest, auth=
         contact = get_lead_contact_for_api_key(auth.key_id)
         if contact:
             try:
-                queue_payment_success_email(
+                _schedule_payment_emails(
+                    background_tasks,
                     name=contact["name"],
                     email=contact["email"],
-                    plan_name=settings.default_plan_name,
-                )
-            except Exception as exc:
-                logger.warning("Payment success email queue failed: %s", exc)
-
-            try:
-                plan = payload.plan_name or settings.default_plan_name
-                amount = payload.amount_inr if payload.amount_inr > 0 else settings.default_plan_amount_inr
-                inv_evt = queue_invoice_email(
-                    name=contact["name"],
-                    email=contact["email"],
-                    plan_name=plan,
-                    amount_inr=amount,
+                    plan_name=payload.plan_name,
+                    amount_inr=payload.amount_inr,
                     razorpay_payment_id=payload.razorpay_payment_id,
                     razorpay_order_id=payload.razorpay_order_id,
+                    context="billing_verify_payment",
                 )
-                if inv_evt.get("id"):
-                    send_transactional_email(inv_evt["id"])
             except Exception as exc:
-                logger.warning("Invoice email failed: %s", exc)
+                logger.warning("Billing payment email dispatch failed: %s", exc)
 
     return RazorpayVerifyPaymentResponse(verified=marked_paid, marked_paid=marked_paid)
 

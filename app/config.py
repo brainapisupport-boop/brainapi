@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     smtp_username: str = ""
     smtp_password: str = ""
     smtp_use_tls: bool = True
+    smtp_timeout_seconds: int = 15
     email_from_address: str = ""
     email_from_name: str = "BrainAPI"
     email_reply_to: str = ""

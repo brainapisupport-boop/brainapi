@@ -11,7 +11,7 @@ from .config import settings
 from .db import SessionLocal
 from .email_validation import normalize_email, validate_email_address
 from .launch import support_email_value
-from .models import APIKey, EmailEvent, SignupLead
+from .models import APIKey, EmailEvent, SignupLead, UserAccount
 
 
 logger = logging.getLogger("brainapi.email")
@@ -32,6 +32,20 @@ def _is_email_configured() -> bool:
 def _should_skip_delivery() -> bool:
     environment = (settings.environment or "").strip().lower()
     return bool(settings.skip_email_in_development and environment in {"development", "dev", "test", "local"})
+
+
+def email_delivery_health() -> dict:
+    environment = (settings.environment or "").strip().lower()
+    configured = _is_email_configured()
+    skip_delivery = _should_skip_delivery()
+    return {
+        "environment": environment or "unknown",
+        "configured": configured,
+        "smtp_host_configured": bool(settings.smtp_host),
+        "from_address_configured": bool(settings.email_from_address),
+        "delivery_enabled": configured and not skip_delivery,
+        "skip_in_development": bool(settings.skip_email_in_development),
+    }
 
 
 def _email_result(
@@ -166,7 +180,7 @@ def queue_payment_success_email(*, name: str | None, email: str, plan_name: str)
 
 
 def queue_password_reset_email(*, email: str, reset_token: str) -> dict:
-    reset_url = f"https://api.brainapi.site/ui/forgot-password.html?token={reset_token}"
+    reset_url = f"{settings.public_base_url.rstrip('/')}/ui/forgot-password.html?token={reset_token}"
     support_email = support_email_value()
     body = (
         "Hi,\n\n"
@@ -235,7 +249,7 @@ def _send_smtp_email(*, recipient_email: str, subject: str, body_text: str) -> N
         message["Reply-To"] = settings.email_reply_to
     message.set_content(body_text)
 
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as server:
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=settings.smtp_timeout_seconds) as server:
         if settings.smtp_use_tls:
             server.starttls()
         if settings.smtp_username:
@@ -332,6 +346,30 @@ def send_transactional_email(event_id: str | None) -> dict:
 
         result["id"] = row.id
         return result
+
+
+def dispatch_transactional_email(event_id: str | None) -> dict:
+    try:
+        result = send_transactional_email(event_id)
+    except Exception as exc:
+        logger.exception("transactional_email_dispatch_crashed event_id=%s error=%s", event_id, exc)
+        return _email_result(
+            success=False,
+            status="failed",
+            message="Email failed.",
+            error=str(exc)[:500],
+            event_id=event_id,
+        )
+
+    if result["status"] != "sent":
+        logger.warning(
+            "transactional_email_not_sent event_id=%s status=%s error=%s",
+            event_id,
+            result["status"],
+            result.get("error"),
+        )
+
+    return result
 
 
 def schedule_trial_reminder_emails() -> dict:
@@ -481,14 +519,25 @@ def send_custom_email(*, recipient_email: str, subject: str, body_text: str) -> 
 
 def get_lead_contact_for_api_key(api_key_id: str) -> dict | None:
     with SessionLocal() as db:
-        row = db.scalar(
+        lead_row = db.scalar(
             select(SignupLead)
             .where(and_(SignupLead.api_key_id == api_key_id, SignupLead.email.is_not(None)))
             .order_by(desc(SignupLead.created_at))
         )
-        if row is None:
+        if lead_row is not None:
+            return {
+                "name": lead_row.name,
+                "email": lead_row.email,
+            }
+
+        user_row = db.scalar(
+            select(UserAccount)
+            .where(and_(UserAccount.api_key_id == api_key_id, UserAccount.email.is_not(None)))
+            .order_by(desc(UserAccount.created_at))
+        )
+        if user_row is None:
             return None
         return {
-            "name": row.name,
-            "email": row.email,
+            "name": user_row.name,
+            "email": user_row.email,
         }
