@@ -16,6 +16,7 @@ os.environ.setdefault("AUTOMATION_ALLOWED_HOSTS", "httpbin.org")
 os.environ.setdefault("ALLOW_PRIVATE_WEBHOOK_TARGETS", "false")
 os.environ.setdefault("TRIAL_SIGNUP_ENABLED", "true")
 
+from app.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
 from app.db import init_db  # noqa: E402
 
@@ -89,6 +90,17 @@ def test_auth_signup_login_reset_flow():
         json={"email": email, "password": "Updated123!"},
     )
     assert relogin_response.status_code == 200
+
+
+def test_auth_routes_are_publicly_accessible_in_config():
+    expected_public_routes = {
+        "/api/v1/auth/signup",
+        "/api/v1/auth/login",
+        "/api/v1/auth/request-reset",
+        "/api/v1/auth/reset-password",
+    }
+
+    assert expected_public_routes.issubset(set(settings.public_path_list))
 
 
 def test_user_api_key_revoke_and_regenerate_flow():
