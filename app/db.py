@@ -13,7 +13,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
 def init_db() -> None:
-    from .models import APIKey, EmailEvent, PasswordResetToken, SignupLead, UsageEvent, UserAccount  # noqa: F401
+    from .models import APIKey, EmailEvent, PasswordResetToken, ProductReview, SignupLead, UsageEvent, UserAccount  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _ensure_schema_updates()

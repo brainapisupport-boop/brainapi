@@ -259,6 +259,109 @@
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 14px;
     }
+    .review-layout {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 18px;
+      align-items: start;
+    }
+    .review-list {
+      display: grid;
+      gap: 14px;
+    }
+    .review-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .review-card {
+      display: grid;
+      gap: 10px;
+    }
+    .review-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .rating-chip,
+    .verified-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .rating-chip {
+      color: #082217;
+      background: var(--accent);
+    }
+    .verified-chip {
+      color: var(--brand);
+      background: rgba(61, 215, 160, 0.1);
+    }
+    .review-meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .review-copy {
+      color: #d7e0e8;
+      line-height: 1.75;
+      font-size: 15px;
+      margin: 0;
+    }
+    .review-form {
+      display: grid;
+      gap: 12px;
+    }
+    .field,
+    .textarea,
+    .select {
+      width: 100%;
+      background: #081019;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 14px;
+      font: inherit;
+    }
+    .textarea {
+      min-height: 140px;
+      resize: vertical;
+    }
+    .field:focus,
+    .textarea:focus,
+    .select:focus {
+      outline: none;
+      border-color: rgba(61, 215, 160, 0.52);
+    }
+    .review-status {
+      display: none;
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .review-status.show { display: block; }
+    .review-status.ok {
+      color: var(--brand);
+      background: rgba(61, 215, 160, 0.08);
+      border: 1px solid rgba(61, 215, 160, 0.18);
+    }
+    .review-status.error {
+      color: #ff9f9f;
+      background: rgba(255, 107, 107, 0.1);
+      border: 1px solid rgba(255, 107, 107, 0.24);
+    }
+    .empty-review {
+      color: var(--muted);
+      line-height: 1.8;
+      margin: 0;
+      font-size: 15px;
+    }
     .founder {
       display: grid;
       grid-template-columns: 1.2fr 0.8fr;
@@ -295,10 +398,12 @@
       .hero-grid,
       .code-wrap,
       .founder,
+      .review-layout,
       .grid-3,
       .pricing-grid,
       .trust-grid,
-      .proof-row {
+      .proof-row,
+      .review-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -313,6 +418,7 @@
       </a>
       <nav class="nav-links">
         <a href="/ui/quickstart.html">Quickstart</a>
+        <a href="#reviews">Reviews</a>
         <a href="/status">Status</a>
         <a href="/ui/login.html">Login</a>
         <a class="btn btn-primary" href="/ui/signup.html">Get API Key</a>
@@ -450,6 +556,53 @@
 
       <section class="section">
         <div class="section-header">
+          <h2 id="reviews">Real user reviews</h2>
+          <p class="lead">No anonymous marketing quotes. Only signed-in BrainAPI users can submit reviews, and public reviews appear after approval.</p>
+        </div>
+        <div class="review-layout">
+          <div class="review-list">
+            <article class="panel">
+              <div class="eyebrow">Public review summary</div>
+              <h3 class="feature-title" id="reviewSummary">Loading approved reviews...</h3>
+              <p class="feature-copy" id="reviewSummarySubtext">Fetching public feedback from real users.</p>
+            </article>
+            <div class="review-grid" id="reviewGrid">
+              <article class="panel review-card">
+                <div class="eyebrow">Reviews</div>
+                <p class="empty-review">Approved reviews will appear here.</p>
+              </article>
+            </div>
+          </div>
+          <aside class="panel review-form">
+            <div class="eyebrow">Leave a review</div>
+            <h3 class="feature-title">Tell future users how BrainAPI worked for you</h3>
+            <p class="feature-copy" id="reviewHelper">Sign in to post a review from your real account. New submissions stay pending until approved.</p>
+            <div id="reviewGuestCta" style="display:grid;gap:10px;">
+              <a class="btn btn-primary" href="/ui/login.html">Sign in to review</a>
+              <a class="btn btn-secondary" href="/ui/signup.html">Create account</a>
+            </div>
+            <form id="reviewForm" style="display:none;">
+              <div style="display:grid;grid-template-columns:120px 1fr;gap:12px;">
+                <select id="reviewRating" class="select" required>
+                  <option value="5">5/5</option>
+                  <option value="4">4/5</option>
+                  <option value="3">3/5</option>
+                  <option value="2">2/5</option>
+                  <option value="1">1/5</option>
+                </select>
+                <input id="reviewRole" class="field" maxlength="120" placeholder="Role or company (optional)" />
+              </div>
+              <input id="reviewHeadline" class="field" maxlength="140" placeholder="Short headline" required />
+              <textarea id="reviewBody" class="textarea" maxlength="2000" placeholder="What worked well? What should other builders know?" required></textarea>
+              <button class="btn btn-primary" id="reviewSubmitBtn" type="submit">Submit review</button>
+            </form>
+            <div id="reviewStatus" class="review-status"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
           <h2>Trust system</h2>
           <p class="lead">No fake social proof. Just the signals a developer actually checks before integrating.</p>
         </div>
@@ -549,6 +702,135 @@
       }).join("");
     }
 
+    function getSessionToken() {
+      return (
+        localStorage.getItem("brainapi.authToken") ||
+        sessionStorage.getItem("brainapi.authToken") ||
+        localStorage.getItem("authToken") ||
+        sessionStorage.getItem("authToken") ||
+        ""
+      );
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function setReviewStatus(type, message) {
+      const el = document.getElementById("reviewStatus");
+      el.className = "review-status show " + type;
+      el.textContent = message;
+    }
+
+    function renderReviews(payload) {
+      const summary = document.getElementById("reviewSummary");
+      const summarySubtext = document.getElementById("reviewSummarySubtext");
+      const grid = document.getElementById("reviewGrid");
+      const items = payload.items || [];
+      const total = Number(payload.total_reviews || 0);
+      const average = Number(payload.average_rating || 0).toFixed(1);
+
+      if (!items.length) {
+        summary.textContent = "No public reviews yet";
+        summarySubtext.textContent = "Be the first signed-in user to submit a review. We only show approved reviews from real accounts.";
+        grid.innerHTML = `
+          <article class="panel review-card">
+            <div class="eyebrow">Approved reviews</div>
+            <p class="empty-review">There are no approved BrainAPI reviews yet. Sign in, submit one, and it can appear here after approval.</p>
+          </article>
+        `;
+        return;
+      }
+
+      summary.textContent = total + " approved review" + (total === 1 ? "" : "s");
+      summarySubtext.textContent = "Average rating: " + average + "/5";
+      grid.innerHTML = items.map((item) => {
+        const role = item.role ? `<div class="review-meta">${escapeHtml(item.role)}</div>` : "";
+        const verified = item.verified_customer ? '<span class="verified-chip">Verified user</span>' : "";
+        const created = new Date(item.created_at).toLocaleDateString();
+        return `
+          <article class="panel review-card">
+            <div class="review-header">
+              <div>
+                <div class="feature-title" style="margin:0 0 4px;">${escapeHtml(item.headline)}</div>
+                <div class="review-meta">${escapeHtml(item.display_name)} · ${created}</div>
+                ${role}
+              </div>
+              <div style="display:grid;gap:8px;justify-items:end;">
+                <span class="rating-chip">${escapeHtml(item.rating)}/5</span>
+                ${verified}
+              </div>
+            </div>
+            <p class="review-copy">${escapeHtml(item.body_text)}</p>
+          </article>
+        `;
+      }).join("");
+    }
+
+    async function loadReviews() {
+      try {
+        const payload = await readJson("/api/v1/public/reviews");
+        renderReviews(payload);
+      } catch (error) {
+        document.getElementById("reviewSummary").textContent = "Reviews unavailable";
+        document.getElementById("reviewSummarySubtext").textContent = "The public reviews endpoint could not be loaded right now.";
+      }
+    }
+
+    function setReviewFormState() {
+      const token = getSessionToken();
+      document.getElementById("reviewGuestCta").style.display = token ? "none" : "grid";
+      document.getElementById("reviewForm").style.display = token ? "grid" : "none";
+      document.getElementById("reviewHelper").textContent = token
+        ? "You are signed in. Submit a review and it will go live after approval."
+        : "Sign in to post a review from your real account. New submissions stay pending until approved.";
+    }
+
+    async function submitReview(event) {
+      event.preventDefault();
+      const token = getSessionToken();
+      if (!token) {
+        setReviewStatus("error", "Please sign in before submitting a review.");
+        setReviewFormState();
+        return;
+      }
+
+      const submitButton = document.getElementById("reviewSubmitBtn");
+      submitButton.disabled = true;
+      try {
+        const response = await fetch("/api/v1/reviews", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            rating: Number(document.getElementById("reviewRating").value),
+            role: document.getElementById("reviewRole").value.trim(),
+            headline: document.getElementById("reviewHeadline").value.trim(),
+            body_text: document.getElementById("reviewBody").value.trim()
+          })
+        });
+
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || payload.message || "Review submission failed.");
+        }
+
+        setReviewStatus("ok", payload.message || "Review submitted.");
+        document.getElementById("reviewForm").reset();
+      } catch (error) {
+        setReviewStatus("error", error.message || "Review submission failed.");
+      } finally {
+        submitButton.disabled = false;
+      }
+    }
+
     function updateLaunchCode() {
       const baseUrl = window.location.origin;
       document.getElementById("launchCode").textContent =
@@ -602,8 +884,11 @@
       });
     });
 
+    document.getElementById("reviewForm").addEventListener("submit", submitReview);
     updateLaunchCode();
+    setReviewFormState();
     loadTrustData();
+    loadReviews();
   </script>
 </body>
 </html>

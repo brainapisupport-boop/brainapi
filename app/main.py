@@ -54,6 +54,7 @@ from .emails import (
 from .launch import launch_metrics_summary, public_status_payload, support_email_value
 from .leads import SignupError, create_trial_signup
 from .metering import per_key_usage_summary, record_usage_event, usage_summary
+from .reviews import list_admin_reviews, list_public_reviews, moderate_review, submit_product_review
 from .schemas import (
     AdminCreateApiKeyRequest,
     AdminCreateRazorpayOrderRequest,
@@ -72,14 +73,18 @@ from .schemas import (
     ImageGenerateRequest,
     ImageGenerateResponse,
     PublicPlansResponse,
+    PublicReviewsResponse,
     PublicTrialSignupRequest,
     PublicTrialSignupResponse,
     RazorpayOrderResponse,
     RazorpayVerifyPaymentRequest,
     RazorpayVerifyPaymentResponse,
+    ReviewModerationRequest,
     SendEmailRequest,
     SendEmailResponse,
     StepResult,
+    SubmitReviewRequest,
+    SubmitReviewResponse,
     TextGenerateRequest,
     TextGenerateResponse,
     TranscriptionResponse,
@@ -467,6 +472,11 @@ def public_status():
     return public_status_payload()
 
 
+@app.get("/api/v1/public/reviews", response_model=PublicReviewsResponse)
+def public_reviews(limit: int = Query(default=6, ge=1, le=20)):
+    return PublicReviewsResponse(**list_public_reviews(limit=limit))
+
+
 @app.get("/api/v1/metrics")
 def metrics(request: Request):
     return {
@@ -633,6 +643,26 @@ def _require_session(request: Request) -> dict:
     
     # Payload contains: {sub: user_id, email, iat, exp, typ: "session"}
     return payload
+
+
+@app.post("/api/v1/reviews", response_model=SubmitReviewResponse)
+def submit_review(payload: SubmitReviewRequest, session: dict = Depends(_require_session)):
+    try:
+        result = submit_product_review(
+            user_id=str(session.get("sub") or ""),
+            rating=payload.rating,
+            headline=payload.headline,
+            body_text=payload.body_text,
+            role=payload.role,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return SubmitReviewResponse(
+        message=result["message"],
+        review_id=result["id"],
+        status=result["status"],
+    )
 
 
 @app.get("/api/v1/me")
@@ -864,6 +894,29 @@ def admin_usage_summary(request: Request, hours: int = Query(default=24, ge=1, l
 def admin_launch_metrics(request: Request, days: int = Query(default=30, ge=1, le=365)):
     require_admin(request)
     return launch_metrics_summary(days=days)
+
+
+@app.get("/api/v1/admin/reviews")
+def admin_reviews(request: Request, status: str = Query(default="pending"), limit: int = Query(default=50, ge=1, le=200)):
+    require_admin(request)
+    try:
+        return list_admin_reviews(status=status, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@app.patch("/api/v1/admin/reviews/{review_id}")
+def admin_update_review(review_id: str, payload: ReviewModerationRequest, request: Request):
+    require_admin(request)
+    try:
+        result = moderate_review(review_id=review_id, status=payload.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
+
+    return result
 
 
 @app.post("/api/v1/admin/emails/schedule-trial-reminders")

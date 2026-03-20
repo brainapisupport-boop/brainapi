@@ -119,6 +119,41 @@ class PublicPlansResponse(BaseModel):
     plans: list[PublicPlanTier]
 
 
+class ProductReviewItem(BaseModel):
+    id: str
+    display_name: str
+    role: str | None = None
+    rating: int
+    headline: str
+    body_text: str
+    verified_customer: bool = False
+    created_at: datetime
+
+
+class PublicReviewsResponse(BaseModel):
+    items: list[ProductReviewItem]
+    total_reviews: int
+    average_rating: float
+
+
+class SubmitReviewRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    headline: str = Field(min_length=4, max_length=140)
+    body_text: str = Field(min_length=20, max_length=2000)
+    role: str | None = Field(default=None, max_length=120)
+
+
+class SubmitReviewResponse(BaseModel):
+    success: bool = True
+    message: str
+    review_id: str
+    status: str
+
+
+class ReviewModerationRequest(BaseModel):
+    status: Literal["approved", "rejected"]
+
+
 class PublicTrialSignupRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     email: str = Field(min_length=5, max_length=190)

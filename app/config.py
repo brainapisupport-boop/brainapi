@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 60
     max_tokens_per_request: int = 4000
     max_tokens_per_minute: int = 40000
-    public_paths: str = "/,/ui,/health,/docs,/openapi.json,/redoc,/robots.txt,/sitemap.xml,/api/v1/billing/razorpay/webhook,/api/v1/public/plans,/api/v1/public/signup-trial,/api/v1/auth/signup,/api/v1/auth/login,/api/v1/auth/request-reset,/api/v1/auth/reset-password"
+    public_paths: str = "/,/ui,/health,/docs,/openapi.json,/redoc,/robots.txt,/sitemap.xml,/api/v1/billing/razorpay/webhook,/api/v1/public/plans,/api/v1/public/reviews,/api/v1/public/signup-trial,/api/v1/auth/signup,/api/v1/auth/login,/api/v1/auth/request-reset,/api/v1/auth/reset-password"
     admin_api_key: str = ""
     routing_config_path: str = "brainapi.config.json"
 
