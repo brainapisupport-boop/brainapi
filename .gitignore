@@ -3,3 +3,7 @@
 live-diagnostics-report.json
 go-live-live.log
 smoke-test-report-live.json
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.db
