@@ -1,0 +1,129 @@
+You are working on a FastAPI backend project called BrainAPI.
+
+Context:
+- SMTP email is failing due to network restrictions (timeouts).
+- We are migrating to Resend API for email delivery.
+- The project uses a Settings class (Pydantic BaseSettings) for environment variables.
+- Deployment is on Render.
+
+---
+
+GOALS:
+
+1. Fix email delivery using Resend (primary provider)
+2. Remove dependency on SMTP in production
+3. Make email system reliable and production-ready
+4. Improve overall project for production deployment
+
+---
+
+TASKS:
+
+### 1. Update Settings
+
+Add new fields:
+
+- resend_api_key: str = ""
+- email_provider: str = "smtp"  # values: "smtp" or "resend"
+
+Ensure they load from environment variables:
+- RESEND_API_KEY
+- EMAIL_PROVIDER
+
+---
+
+### 2. Fix email sending logic (CRITICAL)
+
+Locate `_send_smtp_email` in emails.py
+
+Modify logic:
+
+- FIRST check:
+    if settings.email_provider == "resend":
+
+    Then:
+    - Send email using Resend API
+    - Use requests.post("https://api.resend.com/emails")
+    - Headers:
+        Authorization: Bearer <resend_api_key>
+        Content-Type: application/json
+
+    - JSON body:
+        from: settings.email_from_address
+        to: recipient_email
+        subject: subject
+        html: wrap body_text in <p> tags
+
+    - If response.status_code >= 400 → raise Exception
+
+    - RETURN immediately (important)
+
+- ONLY if provider != "resend":
+    - fallback to SMTP
+
+IMPORTANT:
+- Do NOT call SMTP validation before checking resend
+- Resend must bypass all SMTP checks
+
+---
+
+### 3. Remove SMTP dependency in production
+
+- Do NOT throw error if SMTP is not configured
+- Only require SMTP when provider = smtp
+
+---
+
+### 4. Improve error handling
+
+- Add logging for:
+    - email success
+    - email failure
+- Catch exceptions and log properly
+
+---
+
+### 5. Production readiness improvements
+
+- Ensure environment variables are used everywhere (no hardcoding)
+- Add timeout to all external API calls (timeout=10)
+- Ensure requests library is used properly
+- Validate required env vars on startup (fail fast)
+
+---
+
+### 6. Render compatibility
+
+Ensure system works with:
+
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=<key>
+EMAIL_FROM_ADDRESS=onboarding@resend.dev
+ENVIRONMENT=production
+SKIP_EMAIL_IN_DEVELOPMENT=false
+
+---
+
+### 7. Optional improvements
+
+- Add retry logic (1–2 retries) for email sending
+- Add structured logging
+- Add simple health check endpoint (/health)
+
+---
+
+EXPECTED RESULT:
+
+- Password reset emails are sent via Resend API
+- No SMTP errors
+- Works in Docker + Render
+- Clean, production-ready email system
+- No "SMTP is not configured" error
+
+---
+
+Do NOT change unrelated parts of the system.
+Focus only on:
+- settings
+- emails.py
+- production improvements

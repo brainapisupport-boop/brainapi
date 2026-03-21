@@ -5,6 +5,7 @@ import smtplib
 from datetime import datetime, timezone
 from email.message import EmailMessage
 
+import requests
 from sqlalchemy import and_, desc, func, select
 
 from .config import settings
@@ -12,15 +13,6 @@ from .db import SessionLocal
 from .email_validation import normalize_email, validate_email_address
 from .launch import support_email_value
 from .models import APIKey, EmailEvent, SignupLead, UserAccount
-import socket
-
-# Force IPv4 (VERY IMPORTANT FIX)
-original_getaddrinfo = socket.getaddrinfo
-
-def getaddrinfo_ipv4(*args, **kwargs):
-    return [info for info in original_getaddrinfo(*args, **kwargs) if info[0] == socket.AF_INET]
-
-socket.getaddrinfo = getaddrinfo_ipv4
 
 logger = logging.getLogger("brainapi.email")
 
@@ -33,8 +25,18 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _is_email_configured() -> bool:
+def _is_resend_configured() -> bool:
+    return bool(settings.resend_api_key and settings.email_from_address)
+
+
+def _is_smtp_configured() -> bool:
     return bool(settings.smtp_host and settings.email_from_address)
+
+
+def _is_email_configured() -> bool:
+    if settings.email_provider == "resend":
+        return _is_resend_configured()
+    return _is_smtp_configured()
 
 
 def _should_skip_delivery() -> bool:
@@ -49,7 +51,9 @@ def email_delivery_health() -> dict:
     return {
         "environment": environment or "unknown",
         "configured": configured,
+        "email_provider": settings.email_provider,
         "smtp_host_configured": bool(settings.smtp_host),
+        "resend_configured": _is_resend_configured(),
         "from_address_configured": bool(settings.email_from_address),
         "delivery_enabled": configured and not skip_delivery,
         "skip_in_development": bool(settings.skip_email_in_development),
@@ -245,9 +249,41 @@ def queue_invoice_email(
     )
 
 
+def _send_resend_email(*, recipient_email: str, subject: str, body_text: str) -> None:
+    if not _is_resend_configured():
+        raise EmailError("Resend is not configured. Set RESEND_API_KEY and EMAIL_FROM_ADDRESS.")
+
+    from_address = settings.email_from_name + f" <{settings.email_from_address}>" if settings.email_from_name else settings.email_from_address
+    html_body = "".join(f"<p>{line}</p>" for line in body_text.splitlines()) if body_text else "<p></p>"
+
+    payload = {
+        "from": from_address,
+        "to": [recipient_email],
+        "subject": subject,
+        "html": html_body,
+    }
+    if settings.email_reply_to:
+        payload["reply_to"] = settings.email_reply_to
+
+    response = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {settings.resend_api_key}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=10,
+    )
+
+    if response.status_code >= 400:
+        raise EmailError(f"Resend API error {response.status_code}: {response.text[:200]}")
+
+    logger.info("resend_email_sent recipient=%s subject=%s status=%s", recipient_email, subject, response.status_code)
+
+
 def _send_smtp_email(*, recipient_email: str, subject: str, body_text: str) -> None:
-    if not _is_email_configured():
-        raise EmailError("SMTP is not configured. Set SMTP_HOST and EMAIL_FROM_ADDRESS")
+    if not _is_smtp_configured():
+        raise EmailError("SMTP is not configured. Set SMTP_HOST and EMAIL_FROM_ADDRESS.")
 
     message = EmailMessage()
     message["From"] = f"{settings.email_from_name} <{settings.email_from_address}>"
@@ -260,14 +296,23 @@ def _send_smtp_email(*, recipient_email: str, subject: str, body_text: str) -> N
     message.set_content(body_text)
 
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as server:
-        server.ehlo()              # 👈 add this
-        server.starttls()          # 👈 always use TLS
-        server.ehlo()              # 👈 add this again after TLS
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
 
         if settings.smtp_username:
             server.login(settings.smtp_username, settings.smtp_password)
 
         server.send_message(message)
+
+
+def _send_email(*, recipient_email: str, subject: str, body_text: str) -> None:
+    if settings.email_provider == "resend":
+        _send_resend_email(recipient_email=recipient_email, subject=subject, body_text=body_text)
+        return
+    _send_smtp_email(recipient_email=recipient_email, subject=subject, body_text=body_text)
+
+
 def _deliver_email(*, recipient_email: str, subject: str, body_text: str) -> dict:
     normalized_email, validation_error = _validate_recipient(recipient_email)
     if validation_error or not normalized_email:
@@ -287,27 +332,33 @@ def _deliver_email(*, recipient_email: str, subject: str, body_text: str) -> dic
         )
 
     if not _is_email_configured():
+        provider = settings.email_provider
+        error_msg = (
+            "Resend is not configured. Set RESEND_API_KEY and EMAIL_FROM_ADDRESS."
+            if provider == "resend"
+            else "SMTP is not configured. Set SMTP_HOST and EMAIL_FROM_ADDRESS."
+        )
         return _email_result(
             success=False,
             status="failed",
             message="Email failed.",
-            error="SMTP is not configured.",
+            error=error_msg,
         )
 
     try:
-        _send_smtp_email(
+        _send_email(
             recipient_email=normalized_email,
             subject=subject,
             body_text=body_text,
         )
-        logger.info("email_sent recipient=%s subject=%s", normalized_email, subject)
+        logger.info("email_sent provider=%s recipient=%s subject=%s", settings.email_provider, normalized_email, subject)
         return _email_result(
             success=True,
             status="sent",
             message="Email sent.",
         )
     except Exception as exc:
-        logger.exception("email_delivery_failed recipient=%s error=%s", normalized_email, exc)
+        logger.exception("email_delivery_failed provider=%s recipient=%s error=%s", settings.email_provider, normalized_email, exc)
         return _email_result(
             success=False,
             status="failed",
