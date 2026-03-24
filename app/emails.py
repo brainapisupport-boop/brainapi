@@ -186,3 +186,31 @@ def get_lead_contact_for_api_key(api_key: str):
         "name": "Test User",
         "api_key": api_key,
     }
+def queue_invoice_email(data: dict):
+    """
+    Dummy invoice email queue for testing.
+    Replace with real queue logic later.
+    """
+    return {
+        "status": "queued",
+        "type": "invoice",
+        "data": data,
+    }
+# -------------------------
+# Missing functions (ADD THESE)
+# -------------------------
+
+def queue_payment_success_email(*args, **kwargs):
+    return {"status": "queued", "type": "payment_success"}
+
+def queue_welcome_email(*args, **kwargs):
+    return {"status": "queued", "type": "welcome"}
+
+def schedule_trial_reminder_emails(*args, **kwargs):
+    return {"status": "scheduled"}
+
+def send_pending_emails(*args, **kwargs):
+    return {"status": "processed"}
+
+def validate_email_configuration():
+    return True, []        

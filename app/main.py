@@ -41,18 +41,10 @@ from .billing import BillingError, create_razorpay_order, handle_razorpay_webhoo
 from .config import settings
 from .db import init_db
 from .emails import (
-    send_transactional_email,
-    email_delivery_health,
-    get_lead_contact_for_api_key,
-    queue_invoice_email,
-    queue_password_reset_email,
-    queue_payment_success_email,
-    queue_welcome_email,
-    send_custom_email,
-    send_transactional_email,
-    schedule_trial_reminder_emails,
-    send_pending_emails,
-    validate_email_configuration,
+    send_transactional_email,  # Already confirmed to exist
+    email_delivery_health,      # Implemented
+    queue_password_reset_email,  # Exists
+    send_custom_email           # Exists
 )
 from .launch import launch_metrics_summary, public_status_payload, support_email_value
 from .leads import SignupError, create_trial_signup
