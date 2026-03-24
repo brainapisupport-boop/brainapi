@@ -15,7 +15,6 @@ from .config import settings
 
 logger = logging.getLogger("brainapi.email")
 
-
 # -------------------------
 # Helpers
 # -------------------------
@@ -23,12 +22,10 @@ logger = logging.getLogger("brainapi.email")
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
-
 def _text_to_html(text: str) -> str:
     import html
     safe_text = html.escape(text or "")
     return f"<p>{safe_text.replace(chr(10), '<br/>')}</p>"
-
 
 # -------------------------
 # Brevo Email Sender
@@ -61,7 +58,6 @@ def send_email(to_email: str, subject: str, html_content: str):
     except ApiException as e:
         logger.error("brevo_error %s", str(e))
         raise
-
 
 # -------------------------
 # Queue Email
@@ -101,7 +97,6 @@ def queue_email_event(
 
         return {"status": "queued", "id": row.id}
 
-
 # -------------------------
 # Send Email Immediately
 # -------------------------
@@ -133,7 +128,6 @@ def send_transactional_email(event_id: str):
 
         return {"status": row.status}
 
-
 # -------------------------
 # High-level APIs
 # -------------------------
@@ -147,7 +141,6 @@ def send_custom_email(*, recipient_email: str, subject: str, body_text: str):
     )
 
     return send_transactional_email(event["id"])
-
 
 def queue_password_reset_email(*, email: str, reset_token: str):
     reset_url = f"{settings.public_base_url}/reset?token={reset_token}"
@@ -171,3 +164,25 @@ def queue_password_reset_email(*, email: str, reset_token: str):
         html_body=html,
         dedupe_key=f"reset:{email}",
     )
+
+# -------------------------
+# Email Delivery Health
+# -------------------------
+
+def email_delivery_health():
+    return {
+        "configured": bool(os.getenv("SMTP_HOST")),
+        "delivery_enabled": not settings.skip_email_in_development,
+        "environment": settings.environment,
+        "skip_in_development": settings.skip_email_in_development,
+    }
+def get_lead_contact_for_api_key(api_key: str):
+    """
+    Dummy implementation for tests / fallback.
+    Replace with real DB lookup later.
+    """
+    return {
+        "email": "test@example.com",
+        "name": "Test User",
+        "api_key": api_key,
+    }
