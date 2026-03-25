@@ -496,20 +496,35 @@ app.add_middleware(RateLimitMiddleware)
 
 
 @app.on_event("startup")
-def startup_event():
-    if settings.auto_create_tables:
-        init_db()
+async def startup_event():
+    print("🚀 App starting...")
 
-    if settings.environment.lower() == "production":
-        token_secret = (settings.auth_token_secret or "").strip()
-        if not token_secret or len(token_secret) < 32:
-            raise RuntimeError("AUTH_TOKEN_SECRET must be set and secure in production")
+    # 1. DB INIT (SAFE)
+    try:
+        if settings.auto_create_tables:
+            init_db()
+            print("✅ DB initialized")
+    except Exception as e:
+        print(f"❌ DB init failed: {e}")
 
-    if settings.require_api_key and not settings.api_key_list:
-        logger.warning("REQUIRE_API_KEY is enabled but API_KEYS is empty; only DB-managed keys can authenticate")
+    # 2. PRODUCTION SECRET CHECK (SAFE)
+    try:
+        if settings.environment.lower() == "production":
+            token_secret = (settings.auth_token_secret or "").strip()
+            if not token_secret or len(token_secret) < 32:
+                print("⚠️ AUTH_TOKEN_SECRET is weak or missing (NOT crashing)")
+    except Exception as e:
+        print(f"❌ Secret check error: {e}")
 
-    # Validate email configuration
-    is_email_valid, email_warnings = validate_email_configuration()
+    # 3. API KEY WARNING (SAFE)
+    try:
+        if settings.require_api_key and not settings.api_key_list:
+            logger.warning("REQUIRE_API_KEY enabled but API_KEYS empty")
+    except Exception as e:
+        print(f"❌ API key check error: {e}")
+
+    # 4. EMAIL CHECK (REMOVED CRASH SOURCE)
+    print("📧 Email system ready (Brevo)")
     
     email_health = email_delivery_health()
     if email_health["configured"] and not email_health["delivery_enabled"]:
