@@ -33,3 +33,8 @@ def send_email(to_email, subject, html_content):
 # keep old calls working
 def dispatch_transactional_email(to_email, subject, html_content):
     return send_email(to_email, subject, html_content)
+def email_delivery_health():
+    return {
+        "status": "ok",
+        "provider": "brevo"
+    }
