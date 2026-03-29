@@ -41,9 +41,8 @@ from .billing import BillingError, create_razorpay_order, handle_razorpay_webhoo
 from .config import settings
 from .db import init_db
 # app/main.py
-
 from .emails import (
-    send_transactional_email,
+    dispatch_transactional_email,
     email_delivery_health,
     queue_password_reset_email,
     send_custom_email,
@@ -502,20 +501,15 @@ app.add_middleware(RateLimitMiddleware)
 
 @app.on_event("startup")
 def startup_event():
-    """
-    Triggers the database self-healing logic on boot.
-    Uses local imports to prevent circular dependency crashes.
-    """
+    # Use relative import to avoid the "Not a package" error
     from .db import _ensure_schema_updates
     
-    logger.info("Initializing BrainAPI backend...")
+    print("🚀 App starting...")
     try:
         _ensure_schema_updates()
-        logger.info("Database migration check completed.")
+        print("✅ DB schema verified")
     except Exception as e:
-        # We catch the error so the server doesn't die, 
-        # allowing you to at least see the logs or access the UI.
-        logger.error(f"Startup Database Error: {e}")
+        print(f"❌ DB fix failed: {e}")
 from fastapi.responses import FileResponse
 
 @app.get("/")
